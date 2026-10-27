@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "dashpanel": {
+      "command": "node",
+      "args": ["mcp/server.js"],
+      "env": {
+        "DASHPANEL_URL": "http://localhost:7676"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+services:
+  dashpanel:
+    build: .
+    container_name: dashpanel
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7676}:7676"
+    environment:
+      # Required to edit from other machines (browser edit mode or the MCP server).
+      # install.sh --docker generates one in .env; otherwise set it here or in .env.
+      - DASHPANEL_TOKEN=${DASHPANEL_TOKEN:-change-me}
+    volumes:
+      - ./config:/app/config   # dashboard.json and uploaded backgrounds
+      - ./.cache:/app/.cache   # cached icons

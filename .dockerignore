@@ -1,0 +1,6 @@
+.git
+.cache
+node_modules
+config/dashboard.json
+config/backgrounds
+.env

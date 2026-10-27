@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" {{appearance}}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css?v={{v}}">
+  <script>window.__STATE__ = {{state}};</script>
+  <script src="/app.js?v={{v}}" defer></script>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <div>
+        <h1 id="title"></h1>
+        <p id="date" class="muted"></p>
+      </div>
+      <div class="top-right">
+        <div id="summary" class="summary" aria-live="polite"></div>
+        <div id="clock" class="clock"></div>
+      </div>
+    </header>
+
+    <form id="search" class="search" role="search" autocomplete="off">
+      <div class="engines" id="engines" role="radiogroup" aria-label="Search engine"></div>
+      <div class="search-box">
+        <img id="engine-icon" class="engine-icon" alt="">
+        <input id="q" name="q" type="search" placeholder="Search…" aria-label="Search" autofocus spellcheck="false">
+        <kbd class="hint" title="Press Tab to switch engine">Tab</kbd>
+      </div>
+    </form>
+
+    <div id="config-error" class="banner" hidden></div>
+
+    <section id="services" aria-label="Services"></section>
+    <section id="bookmarks" aria-label="Bookmarks"></section>
+
+    <footer class="foot">
+      <button type="button" id="refresh" class="ghost" title="Check all services now">↻ Refresh</button>
+      <button type="button" id="import-btn" class="ghost edit-only">⇪ Import bookmarks</button>
+      <button type="button" id="settings-btn" class="ghost edit-only">⚙ Settings</button>
+      <button type="button" id="edit" class="ghost" aria-pressed="false">✎ Edit</button>
+    </footer>
+  </main>
+
+  <dialog id="dialog">
+    <form id="dialog-form" method="dialog">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-fields" class="fields"></div>
+      <output id="dialog-msg" class="dialog-msg"></output>
+      <div class="dialog-actions">
+        <button type="button" id="dialog-delete" class="danger">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="dialog-test" class="ghost">Test check</button>
+        <button type="button" value="cancel" id="dialog-cancel" class="ghost">Cancel</button>
+        <button type="submit" value="save" id="dialog-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "title": "Homelab",
+  "settings": { "checkInterval": 30, "timeout": 5000, "defaultSearch": "google", "openInNewTab": false, "accent": "#ea580c" },
+  "services": [
+    { "name": "Proxmox", "url": "https://192.168.1.10:8006", "group": "Infrastructure", "icon": "proxmox" },
+    { "name": "Jellyfin", "url": "http://192.168.1.20:8096", "group": "Media", "check": { "type": "http", "target": "http://192.168.1.20:8096/health", "keyword": "Healthy" } },
+    { "name": "NAS", "url": "http://192.168.1.30", "group": "Infrastructure", "icon": "truenas", "check": { "type": "ping" } },
+    { "name": "Minecraft", "group": "Games", "icon": "⛏️", "check": { "type": "tcp", "target": "192.168.1.40:25565" } }
+  ],
+  "bookmarks": [
+    { "name": "GitHub", "url": "https://github.com", "group": "Dev" },
+    { "name": "YouTube", "url": "https://www.youtube.com", "group": "Daily" }
+  ]
+}

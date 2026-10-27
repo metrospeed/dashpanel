@@ -1,0 +1,22 @@
+{
+  "name": "dashpanel",
+  "version": "1.0.0",
+  "description": "Fast homelab start page with live service status, search and bookmarks, plus an MCP server for Claude Code.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch-path=server.js --watch-path=lib server.js",
+    "mcp": "node mcp/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metrospeed/dashpanel.git"
+  },
+  "bin": {
+    "dashpanel-mcp": "mcp/server.js"
+  }
+}
