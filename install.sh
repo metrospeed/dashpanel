@@ -179,8 +179,16 @@ get_env() { grep "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2-; }
 # ------------------------------------------------------------------ service
 
 write_unit() {
-  local node_bin
+  local node_bin sandbox=""
   node_bin="$(command -v node)"
+  # Filesystem sandboxing needs mount namespaces, which unprivileged LXC containers
+  # (e.g. on Proxmox without nesting) often lack; the container already isolates us there.
+  if ! systemd-detect-virt --container --quiet 2>/dev/null; then
+    sandbox="ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${DIR}/config ${DIR}/.cache"
+  fi
   cat > "$UNIT_FILE" <<EOF
 [Unit]
 Description=dashpanel homelab start page
@@ -202,10 +210,7 @@ RestartSec=3
 AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
 NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ReadWritePaths=${DIR}/config ${DIR}/.cache
+${sandbox}
 
 [Install]
 WantedBy=multi-user.target
@@ -266,6 +271,19 @@ install_docker() {
 }
 
 uninstall() {
+  if [ "$PURGE" -eq 1 ]; then
+    # Resolve symlinks and '..' before checking the directory we would delete.
+    DIR="$(cd -- "$DIR" && pwd -P)" || die "cannot resolve install directory"
+    case "$DIR" in
+      /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/media|/mnt|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/usr/local|/var|/var/lib|/var/www)
+        die "refusing to purge system directory $DIR" ;;
+    esac
+    # Check identity before stopping anything or removing the systemd unit.
+    [ -f "$DIR/server.js" ] && [ -f "$DIR/install.sh" ] \
+      && [ -f "$DIR/config/dashboard.example.json" ] \
+      && grep -Eq '"name"[[:space:]]*:[[:space:]]*"dashpanel"' "$DIR/package.json" \
+      || die "$DIR doesn't look like a dashpanel install; not deleting it"
+  fi
   if [ -f "$DIR/docker-compose.yml" ] && have docker && (cd "$DIR" && docker compose ps -q 2>/dev/null | grep -q .); then
     step "Stopping Docker container"
     (cd "$DIR" && docker compose down)
