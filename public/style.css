@@ -71,7 +71,8 @@ button, input, select { font: inherit; color: inherit; }
 .muted { color: var(--muted); }
 [hidden] { display: none !important; }
 
-.wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 32px; }
+.wrap { margin: 0 auto; padding: 40px 24px 32px; }
+.top, #services, #config-error, .foot { max-width: 1132px; margin-left: auto; margin-right: auto; }
 
 /* ---------------------------------------------------------------- header */
 
@@ -158,15 +159,39 @@ a.card:hover, .editing .card:hover { transform: translateY(-2px); border-color: 
 /* ---------------------------------------------------------------- bookmarks */
 
 #bookmarks { margin-top: 32px; }
-.bm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.bm-group { padding: 14px; border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 70%, transparent); border: 1px solid var(--border); }
-.bm { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; color: var(--text); background: none; border: 0; text-align: left; cursor: pointer; }
+.bm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; align-items: start; }
+.bm-group { min-width: 0; padding: 14px; border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 70%, transparent); border: 1px solid var(--border); }
+.bm-group-head { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+.bm-group-head h3 { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.bm-folder-edit { background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.bm-row { display: flex; align-items: center; gap: 4px; position: relative; }
+.bm { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 8px; color: var(--text); background: none; border: 0; text-align: left; cursor: pointer; }
 .bm:hover { background: var(--panel-2); }
 .bm .icon { width: 22px; height: 22px; border-radius: 5px; background: none; }
 .bm .icon img { width: 18px; height: 18px; }
 .bm .icon.glyph { font-size: 15px; }
 .bm .icon.letter { font-size: 12px; }
 .bm span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bm-grip, .bm-remove { flex: none; display: grid; place-items: center; width: 26px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.bm-grip { cursor: grab; touch-action: none; user-select: none; font-size: 20px; }
+.bm-grip:hover, .bm-grip:focus-visible { color: var(--text); background: var(--panel-2); }
+.bm-remove { font-size: 20px; }
+.bm-remove:hover { color: var(--down-text); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.bm-new-folder { min-height: 80px; padding: 18px; border: 1px dashed var(--border); border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer; }
+.bm-new-folder:hover { color: var(--text); border-color: var(--accent); }
+.bm-empty, .bm-help, .bookmark-msg { font-size: 13px; }
+.bm-empty { padding: 12px 0; }
+.bookmark-msg { color: var(--muted); }
+.bookmark-msg.error { color: var(--down-text); }
+.bookmark-dragging, .bookmark-dragging * { cursor: grabbing !important; user-select: none; }
+.dragging { opacity: 0.45; }
+.drop-folder { border-color: var(--accent); }
+.drop-before::before, .drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; }
+.drop-before::before { top: -2px; }
+.drop-after::after { bottom: -2px; }
+.folder-before { box-shadow: -4px 0 var(--accent); }
+.folder-after { box-shadow: 4px 0 var(--accent); }
+#bookmarks.saving :is(.bm-grip, .bm-remove, .bm-folder-edit, .bm-new-folder, .bm.add) { pointer-events: none; opacity: 0.5; }
 
 /* ---------------------------------------------------------------- edit mode */
 
@@ -181,7 +206,7 @@ body:not(.editing) .edit-only { display: none; }
 .banner { margin: -12px 0 24px; padding: 12px 16px; border-radius: 12px; background: color-mix(in srgb, var(--down) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--down) 45%, var(--border)); font-size: 13.5px; }
 .banner ul { margin: 6px 0 0; padding-left: 18px; }
 
-.foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 32px; }
+.foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 32px; }
 button.ghost, button.primary, button.danger { display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 9px; cursor: pointer; font-size: 13px; }
 button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
 button.ghost:hover { color: var(--text); background: var(--panel); }

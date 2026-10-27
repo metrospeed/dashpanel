@@ -75,6 +75,14 @@ The config lives in `config/dashboard.json`. It is created from `config/dashboar
   - **Accent colour**: pick a swatch or any custom colour.
   - **Background**: an accent glow, a solid colour, or an image. For an image, give a URL or upload a file, then set how much it's dimmed and blurred.
 - **Import bookmarks**: in edit mode, click **⇪ Import bookmarks**.
+- **Organize bookmarks**: in edit mode, use **×** to delete a bookmark or folder. Deleting a folder asks before deleting all bookmarks inside it. Drag a bookmark's **⠿** handle to change its order or move it to another folder; the highlighted line shows where it will land. Drag a folder's handle to reorder folders. Changes save immediately and appear in other open tabs.
+- **Folders**: click **+ New folder** to create an empty folder, or click a folder title in edit mode to rename it or choose its position. Empty folders stay in place until you delete them. The bookmark grid uses the full available screen width, including on large monitors.
+
+Bookmark handles also work with touch. For keyboard editing, focus a handle and use **↑ / ↓** to reorder bookmarks, or **← / →** to move them to the previous or next folder. On a folder handle, any arrow key moves the folder one position. **Escape** cancels an active drag.
+
+Folder names and ordering are stored in the optional top-level `bookmarkGroups` array
+in `dashboard.json`. Existing configs derive that order from the bookmarks on first
+load; importing or adding bookmarks automatically includes any new folders.
 
 ## Updating
 
@@ -220,6 +228,10 @@ Example prompts:
 | `POST /api/test-check` `{url, check}` | dry-run a check |
 | `POST/PATCH/DELETE /api/services[/:id]` | manage services (`null` clears a field) |
 | `POST/PATCH/DELETE /api/bookmarks[/:id]` | manage bookmarks |
+| `POST /api/bookmarks/move` `{id, group, beforeId?}` | move into a folder before a bookmark; omit/null `beforeId` to append |
+| `POST /api/bookmark-groups` `{name}` | create an empty folder |
+| `PATCH /api/bookmark-groups` `{group, name?, beforeGroup?}` | rename/reorder a folder; null `beforeGroup` moves it to the end |
+| `DELETE /api/bookmark-groups/:name` | delete the URL-encoded folder name and its bookmarks |
 | `POST /api/bookmarks/import` `{source, autoSort?, onlyPopular?, dryRun?}` or `{items}` | parse + auto-sort, or save a reviewed list |
 | `PATCH /api/settings` · `GET/PUT /api/config` | settings (`background` is merged) / whole config |
 | `POST /api/background` `{data: "data:image/…;base64,…"}` | upload a background image |

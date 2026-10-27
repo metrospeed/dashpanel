@@ -9,7 +9,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-test('update API enforces authorization, origin and deployment mode', { timeout: 15_000 }, async (t) => {
+test('write APIs enforce authorization and preserve bookmark moves and folder edits', { timeout: 15_000 }, async (t) => {
   const portServer = net.createServer();
   portServer.listen(0, '127.0.0.1');
   await once(portServer, 'listening');
@@ -35,10 +35,10 @@ test('update API enforces authorization, origin and deployment mode', { timeout:
     child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`Server exited: ${code}`)); });
   });
   const base = `http://127.0.0.1:${port}`;
-  const request = (route, { auth = true, origin, method = 'POST' } = {}) => fetch(`${base}${route}`, {
+  const request = (route, { auth = true, origin, method = 'POST', body = {} } = {}) => fetch(`${base}${route}`, {
     method,
     headers: { 'content-type': 'application/json', ...(auth && { authorization: `Bearer ${token}` }), ...(origin && { origin }) },
-    ...(method === 'POST' && { body: '{}' }),
+    ...(method !== 'GET' && { body: JSON.stringify(body) }),
   });
   for (const route of ['/api/updates/check', '/api/updates/install']) {
     assert.equal((await request(route, { auth: false })).status, 401);
@@ -52,4 +52,38 @@ test('update API enforces authorization, origin and deployment mode', { timeout:
   const install = await request('/api/updates/install', { origin: base });
   assert.equal(install.status, 409);
   assert.match((await install.json()).error, /host/);
+
+  const operations = [
+    ['/api/bookmarks/move', 'POST'], ['/api/bookmark-groups', 'POST'],
+    ['/api/bookmark-groups', 'PATCH'], ['/api/bookmark-groups/Alpha', 'DELETE'],
+  ];
+  for (const [route, method] of operations) {
+    assert.equal((await request(route, { method, auth: false })).status, 401);
+    assert.equal((await request(route, { method, origin: 'https://other.example' })).status, 403);
+  }
+  assert.equal((await request('/api/config', { method: 'PUT', body: { bookmarkGroups: ['Alpha', 'Beta', 'Empty'], bookmarks: [
+    { id: 'a', name: 'A', url: 'https://a.example', group: 'Alpha' },
+    { id: 'b', name: 'B', url: 'https://b.example', group: 'Alpha' },
+    { id: 'c', name: 'C', url: 'https://c.example', group: 'Beta' },
+  ] } })).status, 200);
+  const moved = await request('/api/bookmarks/move', { body: { id: 'a', group: 'Beta', beforeId: 'c' } });
+  assert.equal(moved.status, 200);
+  const layout = await moved.json();
+  assert.deepEqual(layout.bookmarks.filter((b) => b.group === 'Beta').map((b) => b.id), ['a', 'c']);
+  assert.equal((await request('/api/bookmarks/move', { body: { id: 'a', group: 'Beta', beforeId: 'b' } })).status, 409);
+  const reordered = await request('/api/bookmark-groups', { method: 'PATCH', body: { group: 'Beta', beforeGroup: 'Alpha' } });
+  assert.deepEqual((await reordered.json()).bookmarkGroups, ['Beta', 'Alpha', 'Empty']);
+  const specialName = 'R&D / Tools';
+  const renamed = await request('/api/bookmark-groups', { method: 'PATCH', body: { group: 'Beta', name: specialName } });
+  assert.deepEqual((await renamed.json()).bookmarkGroups, [specialName, 'Alpha', 'Empty']);
+  const deleted = await request(`/api/bookmark-groups/${encodeURIComponent(specialName)}`, { method: 'DELETE' });
+  assert.equal(deleted.status, 200);
+  assert.deepEqual((await deleted.json()).bookmarks.map((b) => b.id), ['b']);
+  assert.equal((await request('/api/bookmarks/b', { method: 'DELETE' })).status, 200);
+  const created = await request('/api/bookmark-groups', { body: { name: 'New folder' } });
+  assert.equal(created.status, 201);
+  assert.deepEqual((await created.json()).bookmarkGroups, ['Alpha', 'Empty', 'New folder']);
+  const persisted = JSON.parse(fs.readFileSync(path.join(dir, 'dashboard.json'), 'utf8'));
+  assert.deepEqual(persisted.bookmarks, []);
+  assert.deepEqual(persisted.bookmarkGroups, ['Alpha', 'Empty', 'New folder']);
 });
