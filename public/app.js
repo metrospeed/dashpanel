@@ -80,17 +80,29 @@ function renderServices() {
 }
 
 function renderBookmarks() {
-  const groups = groupBy(config.bookmarks);
+  stopBookmarkDrag();
+  const grouped = new Map(groupBy(config.bookmarks));
+  const groups = config.bookmarkGroups.map((group) => [group, grouped.get(group) || []]);
   const add = (group = '') => (editing ? `<button type="button" class="bm add" data-add="bookmark" data-group="${esc(group)}">+ Add</button>` : '');
   $('#bookmarks').innerHTML = groups.length || editing
-    ? `<div class="bm-grid">${groups.map(([group, items]) => `
-        <div class="bm-group">
-          <h3>${esc(group)}</h3>
-          ${items.map((b) => `<a class="bm" data-kind="bookmark" data-id="${esc(b.id)}" ${linkAttrs(b.url)}>
-            ${iconHtml(b.icon, b.name, `/api/icon?domain=${encodeURIComponent(new URL(b.url).hostname)}`)}<span>${esc(b.name)}</span></a>`).join('')}
+    ? `${editing ? '<p class="bm-help muted">Drag the handles to move bookmarks and folders. Use arrow keys on a handle to move it with the keyboard.</p>' : ''}
+      <div class="bm-grid">${groups.map(([group, items]) => `
+        <div class="bm-group" data-bm-group="${esc(group)}">
+          <div class="bm-group-head">
+            ${editing ? `<button type="button" class="bm-grip" data-drag-group="${esc(group)}" aria-label="Move folder ${esc(group)}" title="Drag to reorder; arrow keys also move folders">⠿</button>` : ''}
+            <h3>${editing ? `<button type="button" class="bm-folder-edit" data-edit-group="${esc(group)}" title="Edit folder">${esc(group)}</button>` : esc(group)}</h3>
+            ${editing ? `<button type="button" class="bm-remove" data-delete-group="${esc(group)}" aria-label="Delete folder ${esc(group)}" title="Delete folder and its bookmarks">×</button>` : ''}
+          </div>
+          ${items.map((b) => `<div class="bm-row" data-bookmark="${esc(b.id)}">
+            ${editing ? `<button type="button" class="bm-grip" data-drag-bookmark="${esc(b.id)}" aria-label="Move bookmark ${esc(b.name)}" title="Drag to move; up/down reorder, left/right change folder">⠿</button>` : ''}
+            <a class="bm" data-kind="bookmark" data-id="${esc(b.id)}" draggable="false" ${linkAttrs(b.url)}>
+              ${iconHtml(b.icon, b.name, `/api/icon?domain=${encodeURIComponent(new URL(b.url).hostname)}`)}<span>${esc(b.name)}</span></a>
+            ${editing ? `<button type="button" class="bm-remove" data-delete-bookmark="${esc(b.id)}" aria-label="Delete bookmark ${esc(b.name)}" title="Delete bookmark">×</button>` : ''}
+          </div>`).join('')}
+          ${!items.length ? `<p class="bm-empty muted">${editing ? 'Drop bookmarks here' : 'Empty folder'}</p>` : ''}
           ${add(group)}
         </div>`).join('')}
-        ${editing ? `<div class="bm-group"><h3 class="muted">New group</h3>${add()}</div>` : ''}
+        ${editing ? '<button type="button" class="bm-new-folder" data-new-folder>+ New folder</button>' : ''}
       </div>`
     : '';
 }
@@ -465,7 +477,7 @@ function editBookmark(id, group) {
         ${field({ name: 'group', label: 'Group', value: b?.group ?? group, list: 'bm-groups', placeholder: 'Dev' })}
         ${field({ name: 'icon', label: 'Icon', value: b?.icon, placeholder: 'Site favicon', hint: 'Optional: icon name, URL or emoji' })}
       </div>
-      ${datalist('bm-groups', config.bookmarks.map((x) => x.group))}`,
+      ${datalist('bm-groups', config.bookmarkGroups)}`,
     onSubmit: () => {
       const body = { name: val('name'), url: val('url'), group: val('group') || 'Bookmarks', icon: optional('icon') };
       return b ? api('PATCH', `/api/bookmarks/${encodeURIComponent(b.id)}`, body) : api('POST', '/api/bookmarks', stripNulls(body));
@@ -473,6 +485,204 @@ function editBookmark(id, group) {
     onDelete: b && (() => confirm(`Delete ${b.name}?`) && api('DELETE', `/api/bookmarks/${encodeURIComponent(b.id)}`)),
   });
 }
+
+// ------------------------------------------------------------------ bookmark organization
+
+let bookmarkSaving = false;
+let bookmarkDrag = null;
+let bookmarkScrollFrame;
+let bookmarkClickSuppressedUntil = 0;
+
+function bookmarkMessage(text, error = false) {
+  const message = $('#bookmark-msg');
+  message.hidden = !text;
+  message.textContent = text;
+  message.classList.toggle('error', error);
+}
+
+async function saveBookmarkLayout(method, url, body, message = 'Bookmark layout saved.') {
+  if (bookmarkSaving) return false;
+  bookmarkSaving = true;
+  $('#bookmarks').classList.add('saving');
+  bookmarkMessage('Saving…');
+  try {
+    const result = await api(method, url, body);
+    const next = Array.isArray(result.bookmarks) ? { ...config, ...result } : await api('GET', '/api/config');
+    applyConfig(next, null);
+    bookmarkMessage(message);
+    return true;
+  } catch (err) {
+    bookmarkMessage(err.message, true);
+    if (dialog.open) {
+      $('#dialog-msg').className = 'dialog-msg error';
+      $('#dialog-msg').textContent = err.message;
+    }
+    return false;
+  } finally {
+    bookmarkSaving = false;
+    $('#bookmarks').classList.remove('saving');
+  }
+}
+
+function editBookmarkGroup(group) {
+  const existing = group !== undefined;
+  openDialog({
+    title: existing ? `Edit folder ${group}` : 'New bookmark folder',
+    fields: `${field({ name: 'name', label: 'Folder name', value: group, required: true })}
+      ${existing ? field({ name: 'beforeGroup', label: 'Place before', type: 'select', value: config.bookmarkGroups[config.bookmarkGroups.indexOf(group) + 1] || '', options: [...config.bookmarkGroups.filter((g) => g !== group).map((g) => [g, g]), ['', 'End of folders']] }) : ''}`,
+    onSubmit: async () => (await saveBookmarkLayout(existing ? 'PATCH' : 'POST', '/api/bookmark-groups', existing
+      ? { group, name: val('name'), beforeGroup: val('beforeGroup') || null }
+      : { name: val('name') }, 'Folder saved.')) || false,
+    onDelete: existing && (() => removeBookmarkGroup(group)),
+  });
+}
+
+async function removeBookmarkGroup(group) {
+  const count = config.bookmarks.filter((b) => b.group === group).length;
+  if (!confirm(`Delete folder "${group}"${count ? ` and ${count === 1 ? 'its bookmark' : `all ${count} bookmarks in it`}` : ''}? This cannot be undone.`)) return false;
+  return saveBookmarkLayout('DELETE', `/api/bookmark-groups/${encodeURIComponent(group)}`, undefined, 'Folder deleted.');
+}
+
+function clearBookmarkDropTargets() {
+  $('#bookmarks').querySelectorAll('.drop-before, .drop-after, .drop-folder, .folder-before, .folder-after')
+    .forEach((el) => el.classList.remove('drop-before', 'drop-after', 'drop-folder', 'folder-before', 'folder-after'));
+}
+
+function stopBookmarkDrag() {
+  const drag = bookmarkDrag;
+  bookmarkDrag = null;
+  cancelAnimationFrame(bookmarkScrollFrame);
+  document.body.classList.remove('bookmark-dragging');
+  clearBookmarkDropTargets();
+  if (!drag) return;
+  drag.source.classList.remove('dragging');
+  if (drag.handle.hasPointerCapture(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
+  if (drag.active) {
+    bookmarkClickSuppressedUntil = Date.now() + 300;
+    bookmarkMessage('');
+  }
+}
+
+function updateBookmarkDropTarget() {
+  const drag = bookmarkDrag;
+  if (!drag?.active) return;
+  clearBookmarkDropTargets();
+  drag.target = null;
+  const folder = document.elementFromPoint(drag.x, drag.y)?.closest('[data-bm-group]');
+  if (!folder) return;
+  const group = folder.dataset.bmGroup;
+  if (drag.kind === 'group') {
+    if (group === drag.id) return;
+    const rect = folder.getBoundingClientRect();
+    const after = drag.x > rect.left + rect.width / 2;
+    const groups = config.bookmarkGroups.filter((g) => g !== drag.id);
+    drag.target = { group: drag.id, beforeGroup: after ? groups[groups.indexOf(group) + 1] || null : group };
+    folder.classList.add(after ? 'folder-after' : 'folder-before');
+  } else {
+    const rows = [...folder.querySelectorAll('[data-bookmark]')].filter((row) => row.dataset.bookmark !== drag.id);
+    const before = rows.find((row) => drag.y < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2);
+    drag.target = { id: drag.id, group, beforeId: before?.dataset.bookmark || null };
+    folder.classList.add('drop-folder');
+    (before || rows.at(-1))?.classList.add(before ? 'drop-before' : 'drop-after');
+  }
+}
+
+function scrollBookmarkDrag() {
+  if (!bookmarkDrag?.active) return;
+  const y = bookmarkDrag.y;
+  const speed = y < 64 ? -14 : y > innerHeight - 64 ? 14 : 0;
+  if (speed) { window.scrollBy(0, speed); updateBookmarkDropTarget(); }
+  bookmarkScrollFrame = requestAnimationFrame(scrollBookmarkDrag);
+}
+
+$('#bookmarks').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('[data-drag-bookmark], [data-drag-group]');
+  if (!editing || bookmarkSaving || !handle || e.button !== 0 || !e.isPrimary) return;
+  e.preventDefault();
+  handle.focus({ preventScroll: true });
+  const kind = handle.hasAttribute('data-drag-group') ? 'group' : 'bookmark';
+  bookmarkDrag = { handle, kind, id: kind === 'group' ? handle.dataset.dragGroup : handle.dataset.dragBookmark,
+    source: handle.closest(kind === 'group' ? '[data-bm-group]' : '[data-bookmark]'),
+    pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, active: false };
+  handle.setPointerCapture(e.pointerId);
+});
+
+$('#bookmarks').addEventListener('pointermove', (e) => {
+  const drag = bookmarkDrag;
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  if (!drag.active && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) > 6) {
+    drag.active = true;
+    drag.source.classList.add('dragging');
+    document.body.classList.add('bookmark-dragging');
+    bookmarkMessage('Drop to save the new position. Press Escape to cancel.');
+    scrollBookmarkDrag();
+  }
+  if (drag.active) { e.preventDefault(); updateBookmarkDropTarget(); }
+});
+
+$('#bookmarks').addEventListener('pointerup', async (e) => {
+  if (!bookmarkDrag || e.pointerId !== bookmarkDrag.pointerId) return;
+  bookmarkDrag.x = e.clientX;
+  bookmarkDrag.y = e.clientY;
+  updateBookmarkDropTarget();
+  const { target, kind } = bookmarkDrag;
+  stopBookmarkDrag();
+  if (target) await saveBookmarkLayout(kind === 'group' ? 'PATCH' : 'POST', kind === 'group' ? '/api/bookmark-groups' : '/api/bookmarks/move', target);
+});
+$('#bookmarks').addEventListener('pointercancel', stopBookmarkDrag);
+$('#bookmarks').addEventListener('lostpointercapture', () => { if (bookmarkDrag) stopBookmarkDrag(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && bookmarkDrag) { e.preventDefault(); stopBookmarkDrag(); } });
+
+$('#bookmarks').addEventListener('keydown', async (e) => {
+  const handle = e.target.closest('[data-drag-bookmark], [data-drag-group]');
+  if (!editing || !handle || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  e.preventDefault();
+  if (bookmarkSaving || bookmarkDrag) return;
+  const backwards = e.key === 'ArrowUp' || e.key === 'ArrowLeft';
+  const group = handle.dataset.dragGroup;
+  if (group !== undefined) {
+    const index = config.bookmarkGroups.indexOf(group);
+    if (backwards && index === 0 || !backwards && index === config.bookmarkGroups.length - 1) return;
+    await saveBookmarkLayout('PATCH', '/api/bookmark-groups', { group, beforeGroup: config.bookmarkGroups[index + (backwards ? -1 : 2)] || null });
+  } else {
+    const id = handle.dataset.dragBookmark;
+    const item = config.bookmarks.find((b) => b.id === id);
+    if (!item) return;
+    let group = item.group;
+    let beforeId = null;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      group = config.bookmarkGroups[config.bookmarkGroups.indexOf(group) + (backwards ? -1 : 1)];
+      if (group === undefined) return;
+    } else {
+      const items = config.bookmarks.filter((b) => b.group === group);
+      const index = items.findIndex((b) => b.id === id);
+      if (backwards && index === 0 || !backwards && index === items.length - 1) return;
+      beforeId = items[index + (backwards ? -1 : 2)]?.id || null;
+    }
+    await saveBookmarkLayout('POST', '/api/bookmarks/move', { id, group, beforeId });
+  }
+  const attribute = group !== undefined ? 'data-drag-group' : 'data-drag-bookmark';
+  $(`[${attribute}="${CSS.escape(handle.getAttribute(attribute))}"]`)?.focus({ preventScroll: true });
+});
+
+$('#bookmarks').addEventListener('click', async (e) => {
+  if (!editing) return;
+  if (Date.now() < bookmarkClickSuppressedUntil) { e.preventDefault(); e.stopPropagation(); return; }
+  const remove = e.target.closest('[data-delete-bookmark], [data-delete-group]');
+  const folder = e.target.closest('[data-edit-group], [data-new-folder]');
+  if (!remove && !folder) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (bookmarkSaving) return;
+  if (folder) { editBookmarkGroup(folder.dataset.editGroup); return; }
+  if (remove.hasAttribute('data-delete-group')) { await removeBookmarkGroup(remove.dataset.deleteGroup); return; }
+  const item = config.bookmarks.find((b) => b.id === remove.dataset.deleteBookmark);
+  if (item && confirm(`Delete bookmark "${item.name}"?`)) {
+    await saveBookmarkLayout('DELETE', `/api/bookmarks/${encodeURIComponent(item.id)}`, undefined, 'Bookmark deleted.');
+  }
+});
 
 const THEMES = [['midnight', 'Midnight'], ['slate', 'Slate'], ['nord', 'Nord'], ['dracula', 'Dracula'], ['light', 'Light']];
 const ACCENTS = ['#ea580c', '#e11d48', '#d946ef', '#8b5cf6', '#3b82f6', '#06b6d4', '#10b981', '#84cc16', '#eab308'];

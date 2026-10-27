@@ -9,6 +9,7 @@ import { Monitor } from './lib/monitor.js';
 import { resolveCheck, runCheck } from './lib/checks.js';
 import { categorize, parseBookmarks, urlKey } from './lib/bookmark-import.js';
 import { Updater, requestUpdate } from './lib/updater.js';
+import { createBookmarkGroup, updateBookmarkGroup, deleteBookmarkGroup, moveBookmark } from './lib/bookmark-layout.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -196,6 +197,7 @@ function crud(kind, key) {
 
 const services = crud('service', 'services');
 const bookmarks = crud('bookmark', 'bookmarks');
+const bookmarkLayout = () => ({ bookmarks: store.config.bookmarks, bookmarkGroups: store.config.bookmarkGroups });
 
 /**
  * POST /api/bookmarks/import
@@ -442,9 +444,31 @@ async function route(req, res) {
     case 'POST bookmarks': write(); return send(res, 201, await bookmarks.create(req));
     case 'PATCH bookmarks/:id': write(); return send(res, 200, await bookmarks.update(req, id));
     case 'DELETE bookmarks/:id': write(); return send(res, 200, bookmarks.remove(id));
-    case 'POST bookmarks/:id':
-      if (id !== 'import') break;
+    case 'POST bookmark-groups': {
       write();
+      const { name } = await readJson(req);
+      store.mutate((c) => createBookmarkGroup(c, name));
+      return send(res, 201, bookmarkLayout());
+    }
+    case 'PATCH bookmark-groups': {
+      write();
+      const body = await readJson(req);
+      store.mutate((c) => updateBookmarkGroup(c, body));
+      return send(res, 200, bookmarkLayout());
+    }
+    case 'DELETE bookmark-groups/:id': {
+      write();
+      store.mutate((c) => deleteBookmarkGroup(c, id));
+      return send(res, 200, bookmarkLayout());
+    }
+    case 'POST bookmarks/:id':
+      if (id !== 'import' && id !== 'move') break;
+      write();
+      if (id === 'move') {
+        const body = await readJson(req);
+        store.mutate((c) => moveBookmark(c, body));
+        return send(res, 200, bookmarkLayout());
+      }
       return send(res, 200, await importBookmarks(req));
   }
   return send(res, 404, { error: `No route for ${method} ${pathname}` });
