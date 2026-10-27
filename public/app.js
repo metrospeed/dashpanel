@@ -722,7 +722,75 @@ $('#edit').addEventListener('click', () => {
   renderAll();
 });
 $('#settings-btn').addEventListener('click', editSettings);
+$('#updates-btn').addEventListener('click', showUpdates);
 $('#import-btn').addEventListener('click', importBookmarks);
+
+async function showUpdates() {
+  let info;
+  let closed = false;
+  let timer;
+  const save = $('#dialog-save');
+  const fields = $('#dialog-fields');
+  const msg = $('#dialog-msg');
+  const fail = (err) => {
+    if (closed) return;
+    msg.className = 'dialog-msg error';
+    msg.textContent = err.message;
+    save.disabled = false;
+  };
+  const check = async () => {
+    save.disabled = true;
+    msg.textContent = '';
+    try {
+      const next = await api('POST', '/api/updates/check', {});
+      if (closed) return;
+      info = next;
+      fields.innerHTML = `<p>${info.available === null ? 'Installed revision is unavailable.' : info.available ? 'A different revision is available on GitHub.' : 'You are up to date.'}</p>
+        <p class="muted">Installed: ${esc(info.current?.slice(0, 7) || 'unknown')}<br>Latest (${esc(info.branch)}): <a href="${esc(info.url)}" target="_blank" rel="noopener">${esc(info.latest.slice(0, 7))}</a></p>
+        <p>${info.mode === 'systemd' ? 'Updating keeps your config and restarts dashpanel. The page will reconnect automatically.' : 'Run this in the dashpanel checkout on the host to update. Local changes are kept; conflicting history blocks the update.'}</p>
+        ${info.mode === 'systemd' ? '' : `<pre class="update-command">${info.mode === 'docker' ? 'node update.js --docker' : 'node update.js'}</pre>${info.mode === 'docker' ? '' : '<small>Then restart your Node process. For systemd installs, re-run install.sh once to enable the dashboard updater.</small>'}`}`;
+      save.textContent = info.mode === 'systemd' && info.available ? 'Update & restart' : 'Check again';
+    } catch (err) {
+      if (!closed) fields.innerHTML = '<p>Could not check GitHub. Try again in a moment.</p>';
+      fail(err);
+    } finally { if (!closed) save.disabled = false; }
+  };
+  const waitForUpdate = async (deadline) => {
+    if (closed) return;
+    if (Date.now() > deadline) {
+      fail(new Error('Update timed out. Check journalctl -u dashpanel-update.service on the host.'));
+      return;
+    }
+    try {
+      const status = await api('GET', '/api/updates');
+      if (closed) return;
+      if (status.state === 'failed') { fail(new Error(status.error)); return; }
+      if (status.state === 'complete' && status.runningRevision === status.current) {
+        location.reload();
+        return;
+      }
+      msg.textContent = status.state === 'complete' ? 'Restarting dashpanel…' : 'Downloading the update…';
+    } catch { /* Brief disconnects are expected during the restart. */ }
+    timer = setTimeout(() => waitForUpdate(deadline), 2000);
+  };
+  openDialog({
+    title: 'dashpanel updates', fields: '<p>Checking GitHub…</p>', saveLabel: 'Check again',
+    onDismiss: () => { closed = true; clearTimeout(timer); },
+    onSubmit: async () => {
+      if (save.disabled) return false;
+      if (info?.mode !== 'systemd' || !info.available) { await check(); return false; }
+      save.disabled = true;
+      try {
+        await api('POST', '/api/updates/install', {});
+        msg.className = 'dialog-msg';
+        msg.textContent = 'Update queued…';
+        timer = setTimeout(() => waitForUpdate(Date.now() + 300_000), 1000);
+      } catch (err) { fail(err); }
+      return false;
+    },
+  });
+  await check();
+}
 
 document.addEventListener('click', (e) => {
   if (!editing) return;

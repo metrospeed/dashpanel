@@ -76,6 +76,47 @@ The config lives in `config/dashboard.json`. It is created from `config/dashboar
   - **Background**: an accent glow, a solid colour, or an image. For an image, give a URL or upload a file, then set how much it's dimmed and blurred.
 - **Import bookmarks**: in edit mode, click **⇪ Import bookmarks**.
 
+## Updating
+
+Click **✎ Edit → ↑ Updates** to check GitHub and see the installed and latest commit.
+Updates follow the official repository's `main` branch, matching the installer; there
+are no numbered releases yet. The check runs only when you open this dialog or click
+**Check again**. GitHub errors leave the running app unchanged.
+
+**Systemd:** click **Update & restart** in the dialog. The installer sets up a separate
+`dashpanel-update.service` and a path watcher, so the dashboard keeps its read-only
+filesystem sandbox. The updater runs as the `dashpanel` user and systemd restarts the
+dashboard after success. Existing installs need to re-run the one-line installer once
+to get these units. You can also update from the host:
+
+```sh
+cd /opt/dashpanel
+sudo node update.js --service
+```
+
+**Plain Node:** run `npm run update` (or `node update.js`) in your checkout, then
+restart the running Node process. `node update.js --check` prints the current and
+latest revisions without changing files.
+
+**Docker:** run `node update.js --docker` in the checkout on the Docker host. This
+requires Node 18+ on the host and permission to use Docker; it fetches the update and
+rebuilds the container with `docker compose up -d --build`. The dashboard shows this
+command because containers cannot rebuild themselves. Alternatively, re-run the
+installer with `--docker`, which does not require Node on the host.
+
+Updates refuse dirty checkouts, untracked files, detached HEADs, and local commits
+that differ from GitHub. Commit or move local changes first. Git-ignored config,
+uploaded backgrounds and icon caches are preserved, and updates never force-reset
+your checkout. Fetch/merge failures leave the running process in place; a Docker
+rebuild failure is reported after the source update, and you can retry the command.
+For a non-default branch, set `DASHPANEL_BRANCH`; the installer records its `--branch`
+selection in both systemd units. The checked-out branch must match it.
+
+Update actions use the same edit-token and same-origin checks as other dashboard
+writes. Troubleshoot systemd updates with `journalctl -u dashpanel-update.service`.
+If an interrupted update leaves `.git/dashpanel-update.lock`, confirm no updater is
+running before removing that file and trying again.
+
 ## Importing bookmarks
 
 You can import from:
@@ -182,6 +223,8 @@ Example prompts:
 | `POST /api/bookmarks/import` `{source, autoSort?, onlyPopular?, dryRun?}` or `{items}` | parse + auto-sort, or save a reviewed list |
 | `PATCH /api/settings` · `GET/PUT /api/config` | settings (`background` is merged) / whole config |
 | `POST /api/background` `{data: "data:image/…;base64,…"}` | upload a background image |
+| `POST /api/updates/check` `{}` | check the latest GitHub commit (cached for one minute) |
+| `POST /api/updates/install` `{}` · `GET /api/updates` | queue a systemd update / read its status; both require edit authorization |
 | `GET /api/icon?name=…` · `?domain=…` | cached dashboard-icon / favicon |
 
 Every write needs `Content-Type: application/json`. Cross-origin requests are refused. When `DASHPANEL_TOKEN` is set, send it as `Authorization: Bearer <token>`.

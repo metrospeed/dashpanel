@@ -242,6 +242,7 @@ dialog.wide { width: min(760px, calc(100vw - 32px)); }
 .ip-item em { flex: none; font-style: normal; font-size: 11px; color: var(--muted); }
 .ip-item em.pop { color: color-mix(in srgb, var(--accent) 80%, white); }
 .spacer { flex: 1; }
+.update-command { margin: 0; padding: 12px; overflow-wrap: anywhere; white-space: pre-wrap; border-radius: 8px; background: var(--panel-2); }
 
 @media (max-width: 640px) {
   .wrap { padding: 24px 14px; }

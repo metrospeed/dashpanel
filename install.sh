@@ -18,6 +18,8 @@ PURGE=0
 SERVICE_USER="dashpanel"
 ENV_FILE="/etc/dashpanel.env"
 UNIT_FILE="/etc/systemd/system/dashpanel.service"
+UPDATE_UNIT="/etc/systemd/system/dashpanel-update.service"
+UPDATE_PATH="/etc/systemd/system/dashpanel-update.path"
 MIN_NODE=18
 NODE_MAJOR=22 # installed from NodeSource when the distro's Node is too old
 
@@ -202,6 +204,8 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${DIR}
 EnvironmentFile=${ENV_FILE}
+Environment=DASHPANEL_UPDATE_MODE=systemd
+Environment="DASHPANEL_BRANCH=${BRANCH}"
 ExecStart=${node_bin} ${DIR}/server.js
 Restart=on-failure
 RestartSec=3
@@ -211,6 +215,39 @@ AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
 NoNewPrivileges=true
 ${sandbox}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+write_update_units() {
+  local node_bin systemctl_bin
+  node_bin="$(command -v node)"
+  systemctl_bin="$(command -v systemctl)"
+  cat > "$UPDATE_UNIT" <<EOF
+[Unit]
+Description=Update dashpanel from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+WorkingDirectory=${DIR}
+Environment="DASHPANEL_BRANCH=${BRANCH}"
+ExecStart=${node_bin} ${DIR}/update.js --request
+ExecStartPost=+${systemctl_bin} try-restart dashpanel.service
+TimeoutStartSec=5min
+EOF
+  cat > "$UPDATE_PATH" <<EOF
+[Unit]
+Description=Watch for dashpanel update requests
+
+[Path]
+PathExists=${DIR}/.cache/update-request
+Unit=dashpanel-update.service
 
 [Install]
 WantedBy=multi-user.target
@@ -248,7 +285,9 @@ install_service() {
 
   step "Installing systemd service"
   write_unit
+  write_update_units
   systemctl daemon-reload
+  systemctl enable --now --quiet dashpanel-update.path
   systemctl enable --quiet dashpanel
   systemctl restart dashpanel
 }
@@ -290,8 +329,10 @@ uninstall() {
   fi
   if [ -f "$UNIT_FILE" ]; then
     step "Removing systemd service"
+    systemctl disable --now --quiet dashpanel-update.path 2>/dev/null || true
+    systemctl stop dashpanel-update.service 2>/dev/null || true
     systemctl disable --now --quiet dashpanel 2>/dev/null || true
-    rm -f "$UNIT_FILE"
+    rm -f "$UNIT_FILE" "$UPDATE_UNIT" "$UPDATE_PATH"
     systemctl daemon-reload
   fi
   if [ "$PURGE" -eq 1 ]; then

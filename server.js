@@ -8,6 +8,7 @@ import { ConfigStore, slugify } from './lib/config.js';
 import { Monitor } from './lib/monitor.js';
 import { resolveCheck, runCheck } from './lib/checks.js';
 import { categorize, parseBookmarks, urlKey } from './lib/bookmark-import.js';
+import { Updater, requestUpdate } from './lib/updater.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -20,6 +21,9 @@ const CONFIG_FILE = process.env.DASHPANEL_CONFIG || path.join(ROOT, 'config', 'd
 // Uploaded background images live next to the config so Docker volumes keep them.
 const BG_DIR = path.join(path.dirname(path.resolve(CONFIG_FILE)), 'backgrounds');
 const ICON_CDN = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons';
+const updater = new Updater(ROOT);
+const updateMode = process.env.DASHPANEL_UPDATE_MODE || 'manual';
+const runningRevision = await updater.revision();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -380,6 +384,26 @@ async function route(req, res) {
   const write = () => requireWrite(req);
   const key = `${method} ${resource}${id ? '/:id' : ''}`;
   switch (key) {
+    case 'POST updates/:id': {
+      write();
+      await readJson(req);
+      if (id === 'check') {
+        return send(res, 200, { ...await updater.check(), mode: updateMode });
+      }
+      if (id === 'install') {
+        if (updateMode !== 'systemd') throw new HttpError(409, 'Update from the host using node update.js; Docker installs need --docker.');
+        requestUpdate(ROOT);
+        return send(res, 202, { state: 'queued' });
+      }
+      break;
+    }
+    case 'GET updates': {
+      write();
+      let result = { state: 'idle' };
+      try { result = JSON.parse(fs.readFileSync(path.join(CACHE, 'update-status.json'), 'utf8')); } catch { /* no update yet */ }
+      if (fs.existsSync(path.join(CACHE, 'update-request'))) result = { state: 'queued' };
+      return send(res, 200, { ...result, runningRevision }, { 'cache-control': 'no-store' });
+    }
     case 'GET state': return send(res, 200, state());
     case 'GET events': return openEvents(req, res);
     case 'GET icon': return serveIcon(res, url);
